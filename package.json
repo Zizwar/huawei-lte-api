@@ -1,0 +1,32 @@
+{
+  "name": "huawei-lte-api",
+  "version": "1.0.0",
+  "description": "A Node.js library for interacting with Huawei LTE modems and routers",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "huawei",
+    "lte",
+    "api",
+    "modem",
+    "router",
+    "sms",
+    "network"
+  ],
+  "author": "brahim BIDI",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "xml2js": "^0.4.23"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zizwar/huawei-lte-api.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zizwar/huawei-lte-api/issues"
+  },
+  "homepage": "https://github.com/zizwar/huawei-lte-api#readme"
+}
