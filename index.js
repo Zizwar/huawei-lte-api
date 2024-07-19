@@ -1,99 +1,136 @@
-# huawei-lte-api
+const axios = require('axios');
+const xml2js = require('xml2js');
+const crypto = require('crypto');
 
-A Node.js library for interacting with Huawei LTE modems and routers.
+class HuaweiLTEAPI {
+  constructor(modemIP = '192.168.8.1', username = 'admin', password = 'admin') {
+    this.baseURL = `http://${modemIP}/api`;
+    this.username = username;
+    this.password = password;
+    this.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+    this.sessionInfo = null;
+  }
 
-## Installation
+  async login() {
+    try {
+      const tokenResponse = await axios.get(`${this.baseURL}/webserver/SesTokInfo`);
+      const tokenResult = await xml2js.parseStringPromise(tokenResponse.data);
+      const token = tokenResult.response.TokInfo[0];
+      
+      const passwordHash = crypto.createHash('sha256').update(this.password).digest('hex');
+      const loginData = `<?xml version="1.0" encoding="UTF-8"?><request><Username>${this.username}</Username><Password>${passwordHash}</Password></request>`;
+      
+      const loginResponse = await axios.post(`${this.baseURL}/user/login`, loginData, {
+        headers: {
+          ...this.headers,
+          '__RequestVerificationToken': token
+        }
+      });
+      
+      const loginResult = await xml2js.parseStringPromise(loginResponse.data);
+      if (loginResult.response.result[0] === 'OK') {
+        this.sessionInfo = {
+          token: loginResponse.headers['__requestverificationtokenone'],
+          sessionId: loginResponse.headers['set-cookie'][0].split(';')[0].split('=')[1]
+        };
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Login error:', error.message);
+      return false;
+    }
+  }
 
-```bash
-npm install huawei-lte-api
-```
+  async sendRequest(endpoint, method = 'GET', data = null) {
+    if (!this.sessionInfo) {
+      const loginSuccess = await this.login();
+      if (!loginSuccess) {
+        throw new Error('Login failed');
+      }
+    }
 
-## Usage
+    const headers = {
+      ...this.headers,
+      '__RequestVerificationToken': this.sessionInfo.token,
+      'Cookie': `SessionID=${this.sessionInfo.sessionId}`
+    };
 
-### CommonJS
+    try {
+      const response = await axios({
+        method,
+        url: `${this.baseURL}/${endpoint}`,
+        headers,
+        data
+      });
+      return await xml2js.parseStringPromise(response.data);
+    } catch (error) {
+      console.error('Request error:', error.message);
+      throw error;
+    }
+  }
 
-```javascript
-const HuaweiLTEAPI = require('huawei-lte-api');
-```
+  async readSMS() {
+    return await this.sendRequest('sms/sms-list');
+  }
 
-### ES6 Modules
+  async sendSMS(phoneNumber, message) {
+    const data = `
+      <request>
+        <Index>-1</Index>
+        <Phones><Phone>${phoneNumber}</Phone></Phones>
+        <Sca></Sca>
+        <Content>${message}</Content>
+        <Length>${message.length}</Length>
+        <Reserved>1</Reserved>
+        <Date>${new Date().toISOString()}</Date>
+      </request>
+    `;
+    return await this.sendRequest('sms/send-sms', 'POST', data);
+  }
 
-```javascript
-import HuaweiLTEAPI from 'huawei-lte-api';
-```
+  async deleteSMS(index) {
+    const data = `<request><Index>${index}</Index></request>`;
+    return await this.sendRequest('sms/delete-sms', 'POST', data);
+  }
 
-### Initialize
+  async getDeviceInformation() {
+    return await this.sendRequest('device/information');
+  }
 
-```javascript
-const api = new HuaweiLTEAPI('192.168.8.1','admin','admin'); // Replace with your modem's IP, username and password, default 'admin'
-```
+  async getConnectionStatus() {
+    return await this.sendRequest('monitoring/status');
+  }
 
-## Examples
+  async getTrafficStatistics() {
+    return await this.sendRequest('monitoring/traffic-statistics');
+  }
 
-### Read SMS
+  async getSignalStrength() {
+    return await this.sendRequest('device/signal');
+  }
 
-```javascript
-const messages = await api.readSMS();
-console.log(messages);
-```
+  async getDDNSSettings() {
+    return await this.sendRequest('ddns/settings');
+  }
 
-### Send SMS
+  async logout() {
+    try {
+      await this.sendRequest('user/logout', 'POST');
+      this.sessionInfo = null;
+      return true;
+    } catch (error) {
+      console.error('Logout error:', error.message);
+      return false;
+    }
+  }
+}
 
-```javascript
-const result = await api.sendSMS('1234567890', 'Hello, world!');
-console.log(result);
-```
+module.exports = HuaweiLTEAPI;
 
-### Delete SMS
-
-```javascript
-const result = await api.deleteSMS(1); // Delete SMS with index 1
-console.log(result);
-```
-
-### Get Device Information
-
-```javascript
-const info = await api.getDeviceInformation();
-console.log(info);
-```
-
-### Get Connection Status
-
-```javascript
-const status = await api.getConnectionStatus();
-console.log(status);
-```
-
-### Get Traffic Statistics
-
-```javascript
-const stats = await api.getTrafficStatistics();
-console.log(stats);
-```
-
-### Get Signal Strength
-
-```javascript
-const signal = await api.getSignalStrength();
-console.log(signal);
-```
-
-### Get DDNS Settings
-
-```javascript
-const ddns = await api.getDDNSSettings();
-console.log(ddns);
-```
-
-## Note
-
-This library is designed to work with Huawei LTE modems and routers. It has been tested with the B311-221 model but should work with other similar models. Some API endpoints may vary depending on the specific firmware version of your device.
-
-## License
-
-MIT
-
-## Contributing
-
-Contributions are welcome!
+// For ES6 module support
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = HuaweiLTEAPI;
+} else {
+  global.HuaweiLTEAPI = HuaweiLTEAPI;
+}
